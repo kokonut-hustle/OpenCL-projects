@@ -4,8 +4,11 @@ PROJECT("Dijkstra Project")
 FIND_PACKAGE(Boost COMPONENTS program_options)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
+FILE(COPY include/kernel.cl DESTINATION ${CMAKE_BINARY_DIR}/include)
+
 IF(Boost_PROGRAM_OPTIONS_FOUND)
     INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
-    ADD_EXECUTABLE(dijkstra main.cpp)
+    FILE(GLOB SRC ${CMAKE_SOURCE_DIR}/src/*.cpp)
+    ADD_EXECUTABLE(dijkstra ${SRC} main.cpp)
     TARGET_LINK_LIBRARIES(dijkstra /usr/lib/x86_64-linux-gnu/libOpenCL.so.1 ${Boost_LIBRARIES})
 ENDIF()

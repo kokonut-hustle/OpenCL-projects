@@ -1,23 +1,18 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
-#include <boost/program_options.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <stdio.h>
 #define CL_TARGET_OPENCL_VERSION 300
 #include <CL/cl.h>
 
-#include "ds.hpp"
+#include "graph.hpp"
+#include "input.hpp"
 
 ///
 /// Namespaces
 ///
-namespace po = boost::program_options;
 namespace pt = boost::posix_time;
-
-///
-/// Helper function
-///
 
 ///
 /// Generate a random graph
@@ -106,49 +101,9 @@ cl_device_id get_first_dev(cl_context cx_GPU_context) {
     return first;
 }
 
-///
-/// Parse command line arguments
-///
-void parse_command_line_args(int argc, char **argv,
-                             bool &do_CPU, bool &do_GPU, bool &do_multi_GPU,
-                             bool &do_CPU_GPU, bool &do_ref,
-                             int *source_verts,
-                             int *generate_verts, int *generate_edges_per_vert) {
-    po::options_description desc("Allowed options");
-    desc.add_options()
-        ("help",                        "Produce help message")
-        ("cpu",                         "Run CPU version of algorithm")
-        ("gpu",                         "Run single GPU version of algorithm")
-        ("multigpu",                    "Run multi GPU version of algorithm")
-        ("cpugpu",                      "Run multi GPU+CPU version of algorithm")
-        ("ref",                         "Run reference version of algorithm")
-        ("sources",   po::value<int>(), "Number of source vertices to search from (default: 100)")
-        ("verts",     po::value<int>(), "Number of vertices in randomly generated graph (default: 100000)")
-        ("edges",     po::value<int>(), "Number of edges per vertex in randomly generated graph (default: 10)");
-
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help") || argc == 1) {
-        std::cout << desc << "\n";
-        exit(1);
-    }
-
-    // Parse options
-    if (vm.count("cpu"))        do_CPU = true;
-    if (vm.count("gpu"))        do_GPU = true;
-    if (vm.count("multigpu"))   do_multi_GPU = true;
-    if (vm.count("cpugpu"))     do_CPU_GPU = true;
-    if (vm.count("ref"))        do_ref = true;
-    if (vm.count("sources"))    *source_verts = vm["sources"].as<int>();
-    if (vm.count("verts"))      *generate_verts = vm["verts"].as<int>();
-    if (vm.count("edges"))      *generate_edges_per_vert = vm["edges"].as<int>();
-}
-
 void check_error_file_line(int err_num, int expected, const char *file, const int line_number) {
     if (err_num != expected) {
-        std::cerr << "Line " << line_number << " in File " << file << std::endl;
+        std::cerr << "Error at line " << line_number << " in file " << file << std::endl;
         exit(1);
     }
 }
@@ -364,7 +319,7 @@ void run_Dijkstra(cl_context context, cl_device_id device_id, GraphData *graph,
 
     // Kernel 2
     cl_kernel ssspKernel2;
-    ssspKernel2 = clCreateKernel(program, "DijkstraKernelPhase1", &err_num);
+    ssspKernel2 = clCreateKernel(program, "DijkstraKernelPhase2", &err_num);
     check_error(err_num, CL_SUCCESS);
     err_num |= clSetKernelArg(ssspKernel2, 0, sizeof(cl_mem), &vertex_array_device);
     err_num |= clSetKernelArg(ssspKernel2, 1, sizeof(cl_mem), &edge_array_device);
@@ -448,18 +403,16 @@ void run_Dijkstra(cl_context context, cl_device_id device_id, GraphData *graph,
 /// main
 ///
 int main(int argc, char **argv) {
-    bool do_CPU = false;
     bool do_GPU = false;
-    bool do_multi_GPU = false;
-    bool do_CPU_GPU = false;
+    bool do_org = false;
     bool do_ref = false;
     int num_sources = 100;
     int generate_verts = 100000;
     int generate_edges_per_vert = 10;
 
-    parse_command_line_args(argc, argv, do_CPU, do_GPU,
-                            do_multi_GPU, do_CPU_GPU, do_ref,
-                            &num_sources, &generate_verts, &generate_edges_per_vert);
+    if(!parse_command_line_args(argc, argv, do_GPU, do_org, do_ref,
+                            &num_sources, &generate_verts, &generate_edges_per_vert))
+        exit(1);
 
     cl_platform_id platform;
     cl_context gpu_context;
@@ -489,11 +442,6 @@ int main(int argc, char **argv) {
     if (err_num != CL_SUCCESS)
         std::cout << "No GPU devices found: " << err_num << std::endl;
 
-    // Create an OpenCL context on available CPU devices
-    // cpu_context = clCreateContextFromType(context_properties, CL_DEVICE_TYPE_CPU, NULL, NULL, &err_num);
-    // if (err_num != CL_SUCCESS)
-    //     std::cout << "No CPU devices found: " << err_num << std::endl;
-
     // Allocate memory for arrays
     GraphData graph;
     generate_random_graph(&graph, generate_verts, generate_edges_per_vert);
@@ -508,13 +456,13 @@ int main(int argc, char **argv) {
         source_vert_array[source] = (source % graph.vertex_count);
     }
 
-    float *results = static_cast<float *>(malloc(sizeof(float) * source_vertices.size() * graph.vertex_count));
+    float *results = static_cast<float *>(malloc(sizeof(float) * num_sources * graph.vertex_count));
 
     // Run Dijkstra's algorithm
     pt::ptime start_time_CPU = pt::microsec_clock::local_time();
-    if (do_CPU)
-        run_Dijkstra(cpu_context, get_max_flops_dev(cpu_context), &graph, source_vert_array,
-                     results, source_vertices.size());
+    if (do_GPU)
+        run_Dijkstra(gpu_context, get_max_flops_dev(gpu_context), &graph, source_vert_array,
+                     results, num_sources);
 
     pt::time_duration time_cput = pt::microsec_clock::local_time() - start_time_CPU;
 
