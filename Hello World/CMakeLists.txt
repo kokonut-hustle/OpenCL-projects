@@ -1,0 +1,10 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+PROJECT("Hello World OpenCL")
+
+FILE(COPY HelloWorld.cl DESTINATION ${CMAKE_BINARY_DIR})
+
+INCLUDE_DIRECTORIES(include)
+
+ADD_EXECUTABLE(helloWorld HelloWorld.cpp)
+
+TARGET_LINK_LIBRARIES(helloWorld /usr/lib/x86_64-linux-gnu/libOpenCL.so.1)
