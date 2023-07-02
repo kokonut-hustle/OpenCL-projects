@@ -20,3 +20,5 @@ typedef struct
     // (W) Weight array
     float *weight_array;
 } GraphData;
+
+void generate_random_graph(GraphData *graph, int num_vertices, int neighbors_per_vertex);
